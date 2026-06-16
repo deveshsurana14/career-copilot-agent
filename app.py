@@ -173,8 +173,10 @@ Your job:
 
 Always:
 - Give actionable advice, not vague suggestions
-- Ask clarifying questions to understand the user's current level and goals
-- Remember context from earlier in the conversation
+- Ask at most 2 clarification questions
+- Once the user has chosen a career path, provide a roadmap immediately
+- Never ask for information the user has already provided
+- Use stored memory when available
 - Keep responses focused and scannable
 
 You're talking to a final-year B.E. student in AI & Data Science who is job hunting.
@@ -317,27 +319,112 @@ with st.form("chat_form", clear_on_submit=True):
         submitted = st.form_submit_button("Send →")
 
 if submitted and user_input.strip():
-    # Store user message
-    st.session_state.messages.append({"role": "user", "content": user_input})
 
-    # Update memory with simple keyword extraction
+    # Store user message
+    st.session_state.messages.append({
+        "role": "user",
+        "content": user_input
+    })
+
+    # Memory
     mem = st.session_state.memory
     lower = user_input.lower()
-    if any(w in lower for w in ["want to be", "goal is", "targeting", "i want"]):
+
+    # Career goal detection
+    if "data analytics" in lower:
+        mem.update("career_goal", "Data Analytics")
+
+    elif "data analyst" in lower:
+        mem.update("career_goal", "Data Analytics")
+
+    elif "ml engineer" in lower:
+        mem.update("career_goal", "ML Engineering")
+
+    elif "machine learning engineer" in lower:
+        mem.update("career_goal", "ML Engineering")
+
+    elif "data scientist" in lower:
+        mem.update("career_goal", "Data Science")
+
+    elif any(w in lower for w in ["want to be", "goal is", "targeting", "i want"]):
         mem.update("career_goal", user_input)
-    if any(w in lower for w in ["know", "skills", "experience", "worked with", "i use"]):
+
+    # Skills detection
+    if "python" in lower or "sql" in lower:
         mem.update("mentioned_skills", user_input)
 
-        # Call Gemini
-    with st.spinner("Thinking..."):
-        try:
-            # Build context with memory
-            context = ""
-            if mem.get_all():
-                context = f"\n\n[User context so far: {mem.get_all()}]\n\n"
+    elif any(w in lower for w in ["know", "skills", "experience", "worked with", "i use"]):
+        mem.update("mentioned_skills", user_input)
 
-            response = st.session_state.chat_session.send_message(context + user_input)
-            reply = response.text
+    with st.spinner("Thinking..."):
+
+        try:
+
+            memory_data = mem.get_all()
+
+            context = f"""
+User Memory:
+{memory_data}
+
+Rules:
+- Never ask questions already answered.
+- Use stored memory.
+- If career_goal exists, use it.
+- If user asks for roadmap, provide roadmap immediately.
+- Do not repeat previous questions.
+"""
+
+            # Fast roadmap shortcut
+            goal = str(memory_data.get("career_goal", "")).lower()
+
+            if "roadmap" in lower and "data" in goal:
+
+                reply = """
+📊 Data Analytics Roadmap
+
+Phase 1: Foundations (2 Weeks)
+• Advanced SQL
+• Excel
+• Statistics Basics
+• Data Cleaning
+
+Phase 2: Python Analytics (2 Weeks)
+• Pandas
+• NumPy
+• Matplotlib
+• Exploratory Data Analysis
+
+Phase 3: Visualization (2 Weeks)
+• Power BI
+• Dashboard Design
+• KPI Reporting
+
+Phase 4: Portfolio Projects
+• Sales Dashboard
+• Customer Churn Analysis
+• E-commerce Analytics Project
+
+Phase 5: Job Preparation
+• Resume with 3 Projects
+• LinkedIn Optimization
+• Mock Interviews
+• Apply to 10 Jobs Daily
+
+Target Roles:
+• Data Analyst
+• Business Analyst
+• MIS Executive
+• Reporting Analyst
+• BI Analyst
+"""
+
+            else:
+
+                response = st.session_state.chat_session.send_message(
+                    context + "\n\nUser: " + user_input
+                )
+
+                reply = response.text
 
             st.session_state.messages.append({
                 "role": "assistant",
