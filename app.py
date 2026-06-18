@@ -3,6 +3,7 @@ import google.generativeai as genai
 from memory.session_memory import SessionMemory
 from dotenv import load_dotenv
 import os
+from tools.resume_parser import get_resume_text_and_parsed
 
 load_dotenv()
 
@@ -234,7 +235,7 @@ with st.sidebar:
     st.markdown('<div class="memory-label">📅 Course Progress</div>', unsafe_allow_html=True)
     days = [
         ("Day 1", "Agents & Vibe Coding", True),
-        ("Day 2", "Tools & APIs", False),
+        ("Day 2", "Tools & APIs", True),
         ("Day 3", "Memory & Skills", False),
         ("Day 4", "Security & Eval", False),
         ("Day 5", "Production Deploy", False),
@@ -260,194 +261,540 @@ with col1:
     st.markdown('<div class="hero-subtitle">Your AI-powered career advisor — built for the Kaggle AI Agents Intensive</div>', unsafe_allow_html=True)
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
+tab1, tab2 = st.tabs([
+    "💬 Career Chat",
+    "📄 Resume Analyzer"
+])
 
-# API key guard
-if not st.session_state.api_key:
-    st.markdown("""
-    <div style="background:#1a1f2e;border:1px solid #2a3f6e;border-radius:12px;padding:24px;text-align:center;margin-top:40px;">
-        <div style="font-size:2rem;margin-bottom:12px;">🔑</div>
-        <div style="color:#e2e8f0;font-weight:600;font-size:1rem;">Add your API Key to get started</div>
-        <div style="color:#6b7280;font-size:0.85rem;margin-top:6px;">
-            Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" style="color:#60a5fa;">aistudio.google.com</a>
-            → then paste it in the sidebar
+with tab1:
+
+    # API key guard
+    if not st.session_state.api_key:
+        st.markdown("""
+        <div style="background:#1a1f2e;border:1px solid #2a3f6e;border-radius:12px;padding:24px;text-align:center;margin-top:40px;">
+            <div style="font-size:2rem;margin-bottom:12px;">🔑</div>
+            <div style="color:#e2e8f0;font-weight:600;font-size:1rem;">Add your API Key to get started</div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.stop()
+        """, unsafe_allow_html=True)
+        st.stop()
 
-# Init chat session with Gemini
-if st.session_state.chat_session is None:
-    model = get_gemini_model()
-    if model:
-        st.session_state.chat_session = model.start_chat(history=[])
 
-# Welcome message on first load
-if not st.session_state.messages:
-    st.markdown("""
-    <div class="agent-label">Career Copilot</div>
-    <div class="agent-bubble">
-        Hey! I'm your Career Copilot 👋<br><br>
-        I can help you with:
-        <ul style="margin:8px 0 0 0;padding-left:18px;color:#94a3b8;">
-            <li>Career roadmaps for Data / ML / Backend roles</li>
-            <li>Skills gap analysis</li>
-            <li>Resume and LinkedIn advice</li>
-            <li>Interview preparation</li>
-        </ul>
-        <br>
-        To get started — <b>what role are you targeting right now?</b>
-    </div>
-    """, unsafe_allow_html=True)
+    # Init chat session
+    if st.session_state.chat_session is None:
+        model = get_gemini_model()
+        if model:
+            st.session_state.chat_session = model.start_chat(history=[])
 
-# Render chat history
-for msg in st.session_state.messages:
-    if msg["role"] == "user":
-        st.markdown(f'<div class="user-bubble">{msg["content"]}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="agent-label">Career Copilot</div><div class="agent-bubble">{msg["content"]}</div>', unsafe_allow_html=True)
 
-# ── Chat input ─────────────────────────────────────────────────────────────────
-with st.form("chat_form", clear_on_submit=True):
-    col_input, col_btn = st.columns([5, 1])
-    with col_input:
-        user_input = st.text_input(
-            "Message",
-            placeholder="Ask anything about your career...",
-            label_visibility="collapsed"
-        )
-    with col_btn:
-        submitted = st.form_submit_button("Send →")
+    # Welcome message
+    if not st.session_state.messages:
+        st.markdown("""
+            <div class="agent-label">Career Copilot</div>
+            <div class="agent-bubble">
+            👋 Hey! I'm your Career Copilot
+            <br><br>
+            🔹 Career roadmaps for Data / ML / Backend roles<br>
+            🔹 Skills gap analysis<br>
+            🔹 Resume and LinkedIn advice<br>
+            🔹 Interview preparation
+            <br><br>
+            <b>What role are you targeting right now?</b>
+            </div>
+            """, unsafe_allow_html=True)
 
-if submitted and user_input.strip():
 
-    # Store user message
-    st.session_state.messages.append({
-        "role": "user",
-        "content": user_input
-    })
+    # Chat history
+    for msg in st.session_state.messages:
 
-    # Memory
-    mem = st.session_state.memory
-    lower = user_input.lower()
+        if msg["role"] == "user":
 
-    # Career goal detection
-    if "data analytics" in lower:
-        mem.update("career_goal", "Data Analytics")
+            st.markdown(
+                f'<div class="user-bubble">{msg["content"]}</div>',
+                unsafe_allow_html=True
+            )
 
-    elif "data analyst" in lower:
-        mem.update("career_goal", "Data Analytics")
+        else:
 
-    elif "ml engineer" in lower:
-        mem.update("career_goal", "ML Engineering")
+            st.markdown(
+                f'<div class="agent-label">Career Copilot</div>'
+                f'<div class="agent-bubble">{msg["content"]}</div>',
+                unsafe_allow_html=True
+            )
 
-    elif "machine learning engineer" in lower:
-        mem.update("career_goal", "ML Engineering")
 
-    elif "data scientist" in lower:
-        mem.update("career_goal", "Data Science")
+    # Chat input
+    with st.form("chat_form", clear_on_submit=True):
 
-    elif any(w in lower for w in ["want to be", "goal is", "targeting", "i want"]):
-        mem.update("career_goal", user_input)
+        col_input, col_btn = st.columns([5,1])
 
-    # Skills detection
-    if "python" in lower or "sql" in lower:
-        mem.update("mentioned_skills", user_input)
+        with col_input:
 
-    elif any(w in lower for w in ["know", "skills", "experience", "worked with", "i use"]):
-        mem.update("mentioned_skills", user_input)
+            user_input = st.text_input(
 
-    with st.spinner("Thinking..."):
+                "Message",
+
+                placeholder="Ask anything about your career...",
+
+                label_visibility="collapsed"
+
+            )
+
+
+        with col_btn:
+
+            submitted = st.form_submit_button("Send →")
+
+
+
+    if submitted and user_input.strip():
+
+        st.session_state.messages.append({
+
+            "role":"user",
+
+            "content":user_input
+
+        })
+
+
+        mem = st.session_state.memory
+
+        lower = user_input.lower()
+
+
+        if "data analytics" in lower:
+            mem.update("career_goal","Data Analytics")
+
+        elif "ml engineer" in lower:
+            mem.update("career_goal","ML Engineering")
+
+        elif "data scientist" in lower:
+            mem.update("career_goal","Data Science")
+
+
+        if "python" in lower or "sql" in lower:
+            mem.update("mentioned_skills",user_input)
+
+
+        with st.spinner("Thinking..."):
+
+
+            try:
+
+
+                memory_data = mem.get_all()
+
+
+                context = f"""
+
+User Memory:
+
+{memory_data}
+
+
+Rules:
+
+- Never ask questions already answered
+
+- Use stored memory
+
+- If career_goal exists use it
+
+- If roadmap requested provide roadmap immediately
+
+"""
+
+
+                goal = str(
+
+                    memory_data.get(
+
+                        "career_goal",
+
+                        ""
+
+                    )
+
+                ).lower()
+
+
+
+                if "roadmap" in lower and "data" in goal:
+
+
+                    reply = """
+
+📊 Data Analytics Roadmap
+
+
+Phase 1
+
+• SQL
+
+• Excel
+
+• Statistics
+
+
+Phase 2
+
+• Pandas
+
+• NumPy
+
+• EDA
+
+
+Phase 3
+
+• Power BI
+
+• Dashboards
+
+• KPI Reporting
+
+
+Phase 4
+
+Projects
+
+• Sales Dashboard
+
+• Churn Analysis
+
+• E-commerce Analytics
+
+
+Phase 5
+
+Job Preparation
+
+• Resume
+
+• LinkedIn
+
+• Mock Interviews
+
+• Apply to 10 jobs daily
+
+
+Target Roles
+
+• Data Analyst
+
+• BI Analyst
+
+• Reporting Analyst
+
+"""
+
+
+                else:
+
+
+                    response = st.session_state.chat_session.send_message(
+
+                        context +
+
+                        "\n\nUser: "
+
+                        + user_input
+
+                    )
+
+
+                    reply = response.text
+
+
+
+                st.session_state.messages.append(
+
+                    {
+
+                        "role":"assistant",
+
+                        "content":reply
+
+                    }
+
+                )
+
+
+            except Exception as e:
+
+
+                if "429" in str(e):
+
+                    reply = "⏳ Gemini rate limit reached. Wait 30-60 seconds."
+
+
+                elif "404" in str(e):
+
+                    reply = "⚠️ Gemini model not found."
+
+
+                elif "quota" in str(e).lower():
+
+                    reply = "⚠️ Gemini quota exceeded."
+
+
+                else:
+
+                    reply = f"⚠️ Error : {str(e)}"
+
+
+
+                st.session_state.messages.append(
+
+                    {
+
+                        "role":"assistant",
+
+                        "content":reply
+
+                    }
+
+                )
+
+
+        st.rerun()
+
+with tab2:
+
+    st.header("📄 Resume Analyzer")
+
+    uploaded_resume = st.file_uploader(
+
+        "Upload Resume",
+
+        type=["pdf"]
+
+    )
+
+
+    if uploaded_resume:
+
+
+        model = get_gemini_model()
+
 
         try:
 
-            memory_data = mem.get_all()
 
-            context = f"""
-User Memory:
-{memory_data}
+            raw_text, parsed = get_resume_text_and_parsed(
 
-Rules:
-- Never ask questions already answered.
-- Use stored memory.
-- If career_goal exists, use it.
-- If user asks for roadmap, provide roadmap immediately.
-- Do not repeat previous questions.
-"""
+                uploaded_resume,
 
-            # Fast roadmap shortcut
-            goal = str(memory_data.get("career_goal", "")).lower()
+                model
 
-            if "roadmap" in lower and "data" in goal:
+            )
 
-                reply = """
-📊 Data Analytics Roadmap
 
-Phase 1: Foundations (2 Weeks)
-• Advanced SQL
-• Excel
-• Statistics Basics
-• Data Cleaning
+            # Store in session memory
 
-Phase 2: Python Analytics (2 Weeks)
-• Pandas
-• NumPy
-• Matplotlib
-• Exploratory Data Analysis
+            mem = st.session_state.memory
 
-Phase 3: Visualization (2 Weeks)
-• Power BI
-• Dashboard Design
-• KPI Reporting
 
-Phase 4: Portfolio Projects
-• Sales Dashboard
-• Customer Churn Analysis
-• E-commerce Analytics Project
+            mem.update(
 
-Phase 5: Job Preparation
-• Resume with 3 Projects
-• LinkedIn Optimization
-• Mock Interviews
-• Apply to 10 Jobs Daily
+                "candidate_name",
 
-Target Roles:
-• Data Analyst
-• Business Analyst
-• MIS Executive
-• Reporting Analyst
-• BI Analyst
-"""
+                parsed.get(
+
+                    "name",
+
+                    ""
+
+                )
+
+            )
+
+
+            mem.update(
+
+                "candidate_email",
+
+                parsed.get(
+
+                    "email",
+
+                    ""
+
+                )
+
+            )
+
+
+            mem.update(
+
+                "candidate_skills",
+
+                parsed.get(
+
+                    "skills",
+
+                    []
+
+                )
+
+            )
+
+
+            st.success(
+
+                "Resume Parsed Successfully"
+
+            )
+
+
+            st.subheader(
+
+                "Name"
+
+            )
+
+
+            st.write(
+
+                parsed.get(
+
+                    "name",
+
+                    ""
+
+                )
+
+            )
+
+
+
+            st.subheader(
+
+                "Email"
+
+            )
+
+
+            st.write(
+
+                parsed.get(
+
+                    "email",
+
+                    ""
+
+                )
+
+            )
+
+
+
+            st.subheader(
+
+                "Phone"
+
+            )
+
+
+            st.write(
+
+                parsed.get(
+
+                    "phone",
+
+                    ""
+
+                )
+
+            )
+
+
+
+            st.subheader(
+
+                "Skills"
+
+            )
+
+
+            skills = parsed.get(
+
+                "skills",
+
+                []
+
+            )
+
+
+            if skills:
+
+                st.write(
+
+                    ", ".join(
+
+                        skills
+
+                    )
+
+                )
+
 
             else:
 
-                response = st.session_state.chat_session.send_message(
-                    context + "\n\nUser: " + user_input
+                st.write(
+
+                    "No skills found"
+
                 )
 
-                reply = response.text
 
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": reply
-            })
+
+            st.subheader(
+
+                "Professional Summary"
+
+            )
+
+
+            st.write(
+
+                parsed.get(
+
+                    "summary",
+
+                    ""
+
+                )
+
+            )
+
+
+
+            st.subheader(
+
+                "Raw Resume Text"
+
+            )
+
+
+
+            st.text_area(
+
+                "Resume",
+
+                raw_text,
+
+                height=300
+
+            )
+
 
         except Exception as e:
 
-            if "429" in str(e):
-                reply = "⏳ Gemini rate limit reached. Please wait 30-60 seconds and try again."
 
-            elif "404" in str(e):
-                reply = "⚠️ Gemini model not found. Check the model name in app.py."
+            st.error(
 
-            elif "quota" in str(e).lower():
-                reply = "⚠️ Gemini free-tier quota exceeded. Wait a few minutes and try again."
+                f"Error parsing resume: {e}"
 
-            else:
-                reply = f"⚠️ Error: {str(e)}"
+            )
 
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": reply
-            })
-
-    st.rerun()
