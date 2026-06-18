@@ -4,6 +4,7 @@ from memory.session_memory import SessionMemory
 from dotenv import load_dotenv
 import os
 from tools.resume_parser import get_resume_text_and_parsed
+from tools.jd_matcher import match_resume_to_jd
 
 load_dotenv()
 
@@ -261,9 +262,14 @@ with col1:
     st.markdown('<div class="hero-subtitle">Your AI-powered career advisor — built for the Kaggle AI Agents Intensive</div>', unsafe_allow_html=True)
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
-tab1, tab2 = st.tabs([
+tab1, tab2, tab3 = st.tabs([
+
     "💬 Career Chat",
-    "📄 Resume Analyzer"
+
+    "📄 Resume Analyzer",
+
+    "🎯 JD Matcher"
+
 ])
 
 with tab1:
@@ -797,4 +803,311 @@ with tab2:
                 f"Error parsing resume: {e}"
 
             )
+            
+with tab3:
 
+    st.header("🎯 JD Matcher")
+
+
+    jd_text = st.text_area(
+
+        "Paste Job Description",
+
+        height=250
+
+    )
+
+
+    if st.button(
+
+        "Analyze Match"
+
+    ):
+
+
+        parsed_resume = {
+
+            "name": st.session_state.memory.get_all().get(
+
+                "candidate_name",
+
+                ""
+
+            ),
+
+
+            "email": st.session_state.memory.get_all().get(
+
+                "candidate_email",
+
+                ""
+
+            ),
+
+
+            "skills": st.session_state.memory.get_all().get(
+
+                "candidate_skills",
+
+                []
+
+            )
+
+        }
+
+
+        if not parsed_resume["skills"]:
+
+
+            st.warning(
+
+                "Upload a resume first."
+
+            )
+
+
+        elif not jd_text.strip():
+
+
+            st.warning(
+
+                "Paste a Job Description."
+
+            )
+
+
+        else:
+
+
+            model = get_gemini_model()
+
+
+            with st.spinner(
+
+                "Analyzing..."
+
+            ):
+
+
+                try:
+
+
+                    result = match_resume_to_jd(
+
+                        parsed_resume,
+
+                        jd_text,
+
+                        model
+
+                    )
+
+
+                    score = result.get(
+
+                        "score",
+
+                        0
+
+                    )
+
+
+                    if score >= 75:
+
+                        st.success(
+
+                            f"Match Score : {score}%"
+
+                        )
+
+
+                    elif score >= 50:
+
+
+                        st.warning(
+
+                            f"Match Score : {score}%"
+
+                        )
+
+
+                    else:
+
+
+                        st.error(
+
+                            f"Match Score : {score}%"
+
+                        )
+
+
+
+                    st.subheader(
+
+                        "Verdict"
+
+                    )
+
+
+                    st.write(
+
+                        result.get(
+
+                            "verdict",
+
+                            ""
+
+                        )
+
+                    )
+
+
+
+                    st.subheader(
+
+                        "Matched Skills"
+
+                    )
+
+
+                    matched = result.get(
+
+                        "matched_skills",
+
+                        []
+
+                    )
+
+
+                    if matched:
+
+
+                        st.write(
+
+                            ", ".join(
+
+                                matched
+
+                            )
+
+                        )
+
+
+                    else:
+
+
+                        st.write(
+
+                            "No matching skills found"
+
+                        )
+
+
+
+                    st.subheader(
+
+                        "Missing Skills"
+
+                    )
+
+
+                    missing = result.get(
+
+                        "missing_skills",
+
+                        []
+
+                    )
+
+
+                    if missing:
+
+
+                        st.write(
+
+                            ", ".join(
+
+                                missing
+
+                            )
+
+                        )
+
+
+                    else:
+
+
+                        st.write(
+
+                            "No missing skills"
+
+                        )
+
+
+
+                    st.subheader(
+
+                        "Recommendations"
+
+                    )
+
+
+                    recommendations = result.get(
+
+                        "recommendations",
+
+                        []
+
+                    )
+
+
+                    for rec in recommendations:
+
+
+                        st.write(
+
+                            "•",
+
+                            rec
+
+                        )
+
+
+
+                    st.subheader(
+
+                        "Top JD Requirements"
+
+                    )
+
+
+                    reqs = result.get(
+
+                        "jd_key_requirements",
+
+                        []
+
+                    )
+
+
+                    for req in reqs:
+
+
+                        st.write(
+
+                            "•",
+
+                            req
+
+                        )
+
+
+
+                except Exception as e:
+
+
+                    st.error(
+
+                        str(e)
+
+                    )
