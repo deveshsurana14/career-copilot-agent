@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import os
 from tools.resume_parser import get_resume_text_and_parsed
 from tools.jd_matcher import match_resume_to_jd
+from agents.orchestrator import route
 
 load_dotenv()
 
@@ -352,83 +353,150 @@ with tab1:
 
 
 
-    if submitted and user_input.strip():
+if submitted and user_input.strip():
+    
+    st.session_state.messages.append({
 
-        st.session_state.messages.append({
+        "role": "user",
 
-            "role":"user",
+        "content": user_input
 
-            "content":user_input
-
-        })
-
-
-        mem = st.session_state.memory
-
-        lower = user_input.lower()
+    })
 
 
-        if "data analytics" in lower:
-            mem.update("career_goal","Data Analytics")
-
-        elif "ml engineer" in lower:
-            mem.update("career_goal","ML Engineering")
-
-        elif "data scientist" in lower:
-            mem.update("career_goal","Data Science")
+    mem = st.session_state.memory
 
 
-        if "python" in lower or "sql" in lower:
-            mem.update("mentioned_skills",user_input)
+    lower = user_input.lower()
 
 
-        with st.spinner("Thinking..."):
+    ##########################################
+    # Memory Updates
+    ##########################################
+
+    if "data analytics" in lower:
+
+        mem.update(
+
+            "career_goal",
+
+            "Data Analytics"
+
+        )
 
 
-            try:
+    elif "ml engineer" in lower:
 
 
-                memory_data = mem.get_all()
+        mem.update(
+
+            "career_goal",
+
+            "ML Engineering"
+
+        )
 
 
-                context = f"""
-
-User Memory:
-
-{memory_data}
+    elif "data scientist" in lower:
 
 
-Rules:
+        mem.update(
 
-- Never ask questions already answered
+            "career_goal",
 
-- Use stored memory
+            "Data Science"
 
-- If career_goal exists use it
-
-- If roadmap requested provide roadmap immediately
-
-"""
-
-
-                goal = str(
-
-                    memory_data.get(
-
-                        "career_goal",
-
-                        ""
-
-                    )
-
-                ).lower()
+        )
 
 
 
-                if "roadmap" in lower and "data" in goal:
+    if "python" in lower or "sql" in lower:
 
 
-                    reply = """
+        mem.update(
+
+            "mentioned_skills",
+
+            user_input
+
+        )
+
+
+
+    parsed_resume = {
+
+
+        "name": mem.get_all().get(
+
+            "candidate_name",
+
+            ""
+
+        ),
+
+
+
+        "email": mem.get_all().get(
+
+            "candidate_email",
+
+            ""
+
+        ),
+
+
+
+        "skills": mem.get_all().get(
+
+            "candidate_skills",
+
+            []
+
+        )
+
+
+    }
+
+
+    with st.spinner(
+
+        "Thinking..."
+
+    ):
+
+
+        try:
+
+
+            goal = str(
+
+                mem.get_all().get(
+
+                    "career_goal",
+
+                    ""
+
+                )
+
+            ).lower()
+
+
+            ##########################################
+            # Fast Roadmap Shortcut
+            ##########################################
+
+            if (
+
+                "roadmap" in lower
+
+                and
+
+                "data" in goal
+
+            ):
+
+
+                reply = """
 
 📊 Data Analytics Roadmap
 
@@ -455,7 +523,7 @@ Phase 3
 
 • Power BI
 
-• Dashboards
+• Dashboard Design
 
 • KPI Reporting
 
@@ -464,9 +532,12 @@ Phase 4
 
 Projects
 
+
 • Sales Dashboard
 
-• Churn Analysis
+
+• Customer Churn Analysis
+
 
 • E-commerce Analytics
 
@@ -475,96 +546,109 @@ Phase 5
 
 Job Preparation
 
+
 • Resume
+
 
 • LinkedIn
 
+
 • Mock Interviews
+
 
 • Apply to 10 jobs daily
 
 
+
 Target Roles
+
 
 • Data Analyst
 
+
 • BI Analyst
 
+
 • Reporting Analyst
+
+
+• MIS Executive
+
 
 """
 
 
+            ##########################################
+            # Orchestrator
+            ##########################################
+
+            else:
+
+
+                result = route(
+
+                    user_message=user_input,
+
+                    model=get_gemini_model(),
+
+                    session_memory=mem,
+
+                    parsed_resume=parsed_resume
+
+                )
+
+
+                if result["response_type"] == "text":
+
+
+                    reply = result["data"]
+
+
                 else:
 
 
-                    response = st.session_state.chat_session.send_message(
+                    reply = str(
 
-                        context +
-
-                        "\n\nUser: "
-
-                        + user_input
+                        result["data"]
 
                     )
 
 
-                    reply = response.text
+            st.session_state.messages.append(
 
 
+                {
 
-                st.session_state.messages.append(
+                    "role": "assistant",
 
-                    {
+                    "content": reply
 
-                        "role":"assistant",
+                }
 
-                        "content":reply
-
-                    }
-
-                )
+            )
 
 
-            except Exception as e:
+        except Exception as e:
 
 
-                if "429" in str(e):
-
-                    reply = "⏳ Gemini rate limit reached. Wait 30-60 seconds."
+            reply = f"⚠️ Error : {e}"
 
 
-                elif "404" in str(e):
-
-                    reply = "⚠️ Gemini model not found."
+            st.session_state.messages.append(
 
 
-                elif "quota" in str(e).lower():
+                {
 
-                    reply = "⚠️ Gemini quota exceeded."
+                    "role": "assistant",
 
+                    "content": reply
 
-                else:
+                }
 
-                    reply = f"⚠️ Error : {str(e)}"
-
-
-
-                st.session_state.messages.append(
-
-                    {
-
-                        "role":"assistant",
-
-                        "content":reply
-
-                    }
-
-                )
+            )
 
 
-        st.rerun()
-
+    st.rerun()
 with tab2:
 
     st.header("📄 Resume Analyzer")
