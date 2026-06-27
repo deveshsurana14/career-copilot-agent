@@ -3,11 +3,19 @@ import google.generativeai as genai
 from memory.session_memory import SessionMemory
 from dotenv import load_dotenv
 import os
+import logging
 from tools.resume_parser import get_resume_text_and_parsed
 from tools.jd_matcher import match_resume_to_jd
 from agents.orchestrator import route
+from evaluation.evaluator import run_full_evaluation
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("career_copilot")
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -238,9 +246,9 @@ with st.sidebar:
     days = [
         ("Day 1", "Agents & Vibe Coding", True),
         ("Day 2", "Tools & APIs", True),
-        ("Day 3", "Memory & Skills", False),
-        ("Day 4", "Security & Eval", False),
-        ("Day 5", "Production Deploy", False),
+        ("Day 3", "Memory & Multi-Agent", True),
+        ("Day 4", "Security & Eval", True),
+        ("Day 5", "Production Deploy", True),
     ]
     for day, topic, done in days:
         icon = "✅" if done else "⬜"
@@ -258,18 +266,20 @@ with st.sidebar:
 # ── Main UI ────────────────────────────────────────────────────────────────────
 col1, col2 = st.columns([3, 1])
 with col1:
-    st.markdown('<div class="status-pill">Day 1 · Agents & Vibe Coding</div>', unsafe_allow_html=True)
+    st.markdown('<div class="status-pill">Day 5 · Production Ready</div>', unsafe_allow_html=True)
     st.markdown('<div class="hero-title">Career Copilot 🚀</div>', unsafe_allow_html=True)
     st.markdown('<div class="hero-subtitle">Your AI-powered career advisor — built for the Kaggle AI Agents Intensive</div>', unsafe_allow_html=True)
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
 
     "💬 Career Chat",
 
     "📄 Resume Analyzer",
 
-    "🎯 JD Matcher"
+    "🎯 JD Matcher",
+
+    "🧪 Evaluation"
 
 ])
 
@@ -1195,3 +1205,57 @@ with tab3:
                         str(e)
 
                     )
+
+with tab4:
+    st.header("🧪 Agent Evaluation — Day 4")
+    st.markdown(
+        "Runs automated test cases against each agent and reports pass/fail, "
+        "schema correctness, and response latency."
+    )
+
+    if not st.session_state.api_key:
+        st.warning("Add your API key in the sidebar to run evaluations.")
+    else:
+        if st.button("▶ Run Full Evaluation Suite"):
+            model = get_gemini_model()
+            with st.spinner("Running all agent evaluations... this may take ~30s"):
+                try:
+                    logger.info("Starting full evaluation suite")
+                    report = run_full_evaluation(model)
+                    logger.info("Evaluation complete: %s", report["summary"])
+
+                    summary = report["summary"]
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Total Cases", summary["total_cases"])
+                    c2.metric("Passed", summary["total_passed"])
+                    c3.metric("Failed", summary["total_failed"])
+                    c4.metric("Pass Rate", f"{summary['overall_pass_rate']}%")
+
+                    st.markdown("---")
+
+                    for key, section in report.items():
+                        if key == "summary":
+                            continue
+                        color = "#00C851" if section["pass_rate"] == 100 else (
+                            "#FF8800" if section["pass_rate"] >= 50 else "#FF4444"
+                        )
+                        st.markdown(
+                            f"### {section['agent']}  "
+                            f"<span style='color:{color};font-size:0.9rem;'>"
+                            f"{section['passed']}/{section['total']} passed "
+                            f"({section['pass_rate']}%)</span>",
+                            unsafe_allow_html=True,
+                        )
+                        for case in section["cases"]:
+                            icon = "✅" if case["passed"] else "❌"
+                            label = case.get("description") or case.get("message", "")
+                            with st.expander(f"{icon} {label}"):
+                                if case.get("error"):
+                                    st.error(f"Error: {case['error']}")
+                                else:
+                                    st.json({k: v for k, v in case.items()
+                                             if k not in ("description", "message")})
+
+                except Exception as e:
+                    logger.exception("Evaluation failed")
+                    st.error(f"Evaluation error: {e}")

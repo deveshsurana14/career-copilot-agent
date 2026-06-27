@@ -1,5 +1,6 @@
 """
 Day 3 - Agent: Orchestrator
+Day 4 - Added: input validation and sanitization
 
 Routes user queries to the appropriate agent.
 
@@ -13,6 +14,34 @@ general
 """
 
 import json
+import re
+
+# Day 4: input limits
+_MAX_MESSAGE_LENGTH = 8000
+_MAX_JD_LENGTH = 15000
+
+
+def validate_and_sanitize(user_message: str, jd_text: str = None) -> tuple[str, str | None, str | None]:
+    """
+    Validates and sanitizes user inputs.
+    Returns (clean_message, clean_jd, error_string_or_None).
+    """
+    if not user_message or not user_message.strip():
+        return "", None, "Message cannot be empty."
+
+    if len(user_message) > _MAX_MESSAGE_LENGTH:
+        return "", None, f"Message too long (max {_MAX_MESSAGE_LENGTH} characters)."
+
+    # Strip null bytes and control chars (keep newlines/tabs)
+    clean_message = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", user_message).strip()
+
+    clean_jd = None
+    if jd_text:
+        if len(jd_text) > _MAX_JD_LENGTH:
+            return clean_message, None, f"Job description too long (max {_MAX_JD_LENGTH} characters)."
+        clean_jd = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", jd_text).strip()
+
+    return clean_message, clean_jd, None
 
 
 from agents.resume_agent import (
@@ -237,6 +266,11 @@ def route(
         jd_text=None
 
 ):
+    # Day 4: validate inputs before routing
+    user_message, jd_text, err = validate_and_sanitize(user_message, jd_text)
+    if err:
+        return {"intent": "error", "response_type": "text", "data": err, "agent_used": "orchestrator"}
+
 
 
 
@@ -488,8 +522,6 @@ def route(
             "jd_matcher"
 
         }
-
-
 
 
     #####################################################
